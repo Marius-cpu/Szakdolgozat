@@ -111,6 +111,128 @@ void loop() {
       }
     }
 
+
+
+
+
+
+
+
+
+    
+#include <IRremote.hpp>
+
+#define IR_PIN 2
+#define LED1_PIN 8
+#define PIR_PIN 9
+#define LED2_PIN 10
+#define RELAY_PIN 12
+
+#define PIR_HOLD_TIME 15000UL
+
+bool led1State = false;
+bool led2State = false;
+bool pirEnabled = true;
+bool pirActive = false;
+bool waitingForClear = false;
+
+unsigned long pirStartTime = 0;
+
+void updateLEDs() {
+  digitalWrite(LED1_PIN, led1State || pirActive);
+  digitalWrite(LED2_PIN, led2State || pirActive);
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(LED1_PIN, OUTPUT);
+  pinMode(LED2_PIN, OUTPUT);
+  pinMode(PIR_PIN, INPUT);
+  pinMode(RELAY_PIN, OUTPUT);
+
+  digitalWrite(RELAY_PIN, LOW);
+
+  IrReceiver.begin(IR_PIN, ENABLE_LED_FEEDBACK);
+
+  updateLEDs();
+
+  Serial.println("IR controller ready!");
+}
+
+void loop() {
+  // IR remote handling
+  if (IrReceiver.decode()) {
+    if (!(IrReceiver.decodedIRData.flags & IRDATA_FLAGS_IS_REPEAT)) {
+
+      uint8_t command = IrReceiver.decodedIRData.command;
+
+      Serial.print("Received command: 0x");
+      Serial.println(command, HEX);
+
+      switch (command) {
+
+        case 0x15:
+          led1State = !led1State;
+          Serial.println("LED 1 toggled");
+          updateLEDs();
+          break;
+
+        case 0x07:
+          led2State = !led2State;
+          Serial.println("LED 2 toggled");
+          updateLEDs();
+          break;
+
+        case 0x09:
+          pirEnabled = !pirEnabled;
+
+          if (!pirEnabled) {
+            pirActive = false;
+            waitingForClear = false;
+          }
+
+          Serial.print("PIR detection: ");
+          Serial.println(pirEnabled ? "ON" : "OFF");
+
+          updateLEDs();
+          break;
+
+        default:
+          Serial.println("Unassigned button");
+          break;
+      }
+    }
+
+    IrReceiver.resume();
+  }
+
+  // PIR motion detection
+  if (pirEnabled && !pirActive && !waitingForClear) {
+    if (digitalRead(PIR_PIN) == HIGH) {
+      pirActive = true;
+      pirStartTime = millis();
+
+      Serial.println("Motion detected!");
+      updateLEDs();
+    }
+  }
+
+  // Turn off PIR activation after 15 seconds
+  if (pirActive && millis() - pirStartTime >= PIR_HOLD_TIME) {
+    pirActive = false;
+    waitingForClear = true;
+
+    updateLEDs();
+  }
+
+  // Wait for PIR sensor to return LOW
+  if (waitingForClear && digitalRead(PIR_PIN) == LOW) {
+    waitingForClear = false;
+  }
+}
+
+
     IrReceiver.resume();
   }
 }
